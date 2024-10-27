@@ -3,6 +3,7 @@ package gnolang
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -49,10 +50,28 @@ func FuzzConvertUntypedBigdecToFloat(f *testing.F) {
 
 func FuzzParseFile(f *testing.F) {
 	// 1. Add the corpra.
-	paths, err := filepath.Glob(filepath.Join("testdata", "corpra", "parseifle", "*.go"))
+	parseFileDir := filepath.Join("testdata", "corpra", "parsefile")
+	paths, err := filepath.Glob(filepath.Join(parseFileDir, "*.go"))
 	if err != nil {
 		f.Fatal(err)
 	}
+
+	// Also load in files from gno/gnovm/tests/files
+	_, curFile, _, _ := runtime.Caller(0)
+	curFileDir := filepath.Dir(curFile)
+	gnovmTestFilesDir, err := filepath.Abs(filepath.Join(curFileDir, "..", "..", "tests", "files"))
+	if err != nil {
+		f.Fatal(err)
+	}
+	globGnoTestFiles := filepath.Join(gnovmTestFilesDir, "*.gno")
+	gnoTestFiles, err := filepath.Glob(globGnoTestFiles)
+	if err != nil {
+		f.Fatal(err)
+	}
+	if len(gnoTestFiles) == 0 {
+		f.Fatalf("no files found from globbing %q", globGnoTestFiles)
+	}
+	paths = append(paths, gnoTestFiles...)
 
 	for _, path := range paths {
 		blob, err := os.ReadFile(path)

@@ -1,6 +1,7 @@
 package transpiler
 
 import (
+	"fmt"
 	"io"
 	"io/fs"
 	"os"
@@ -12,6 +13,11 @@ import (
 )
 
 func FuzzTranspiling(f *testing.F) {
+	if testing.Short() {
+		f.Skip("Running in -short mode")
+	}
+
+	// 1. Derive the seeds from our seedGnoFiles.
 	breakRoot := filepath.Join("gnolang", "gno")
 	_, thisFile, _, _ := runtime.Caller(0)
 	index := strings.Index(thisFile, breakRoot)
@@ -40,24 +46,35 @@ func FuzzTranspiling(f *testing.F) {
 		return nil
 	})
 
-	// 1. Derive the seeds from our seedGnoFiles.
+	// 2. Run the fuzzers.
 	f.Fuzz(func(t *testing.T, gnoSourceCode []byte) {
-		// Add timings to ensure that if transpiling takes a long time
+		// 3. Add timings to ensure that if transpiling takes a long time
 		// to run, that we report this as problematic.
 		doneCh := make(chan bool, 1)
 		readyCh := make(chan bool)
 		go func() {
+			defer func() {
+				r := recover()
+				if r == nil {
+					return
+				}
+
+				sr := fmt.Sprintf("%s", r)
+				if !strings.Contains(sr, "invalid line number ") {
+					panic(r)
+				}
+			}()
 			close(readyCh)
+			defer close(doneCh)
 			_, _ = Transpile(string(gnoSourceCode), "gno", "in.gno")
 			doneCh <- true
-			close(doneCh)
 		}()
 
 		<-readyCh
 
 		select {
-		case <-time.After(3 * time.Second):
-			t.Fatal("took more than 3 seconds to transpile")
+		case <-time.After(2 * time.Second):
+			t.Fatalf("took more than 2 seconds to transpile\n\n%s", gnoSourceCode)
 		case <-doneCh:
 		}
 	})

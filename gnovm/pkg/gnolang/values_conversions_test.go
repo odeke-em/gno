@@ -27,6 +27,103 @@ func TestConvertUntypedBigdecToFloat(t *testing.T) {
 	require.Equal(t, float64(0), dst.GetFloat64())
 }
 
+type bitShiftingCases struct {
+	source string
+	msg    string
+}
+
+var bitShiftingTests = []bitShiftingCases{
+	{
+		`package test
+
+func main() {
+	const a = int32(1) << 33
+}`,
+		`test/main.go:3:1: constant overflows`,
+	},
+	{
+		`package test
+
+func main() {
+	const a1 = int8(1) << 8
+}`,
+		`test/main.go:3:1: constant overflows`,
+	},
+	{
+		`package test
+
+func main() {
+	const a2 = int16(1) << 16
+}`,
+		`test/main.go:3:1: constant overflows`,
+	},
+	{
+		`package test
+
+func main() {
+	const a3 = int32(1) << 33
+}`,
+		`test/main.go:3:1: constant overflows`,
+	},
+	{
+		`package test
+
+func main() {
+	const a4 = int64(1) << 65
+}`,
+		`test/main.go:3:1: constant overflows`,
+	},
+	{
+		`package test
+
+func main() {
+	const b1 = uint8(1) << 8
+}`,
+		`test/main.go:3:1: constant overflows`,
+	},
+	{
+		`package test
+
+func main() {
+    const b2 = uint16(1) << 16
+}`,
+		`test/main.go:3:1: constant overflows`,
+	},
+	{
+		`package test
+
+func main() {
+	const b3 = uint32(1) << 33
+}`,
+		`test/main.go:3:1: constant overflows`,
+	},
+	{
+		`package test
+
+func main() {
+    const b4 = uint64(1) << 65
+}`,
+		`test/main.go:3:1: constant overflows`,
+	},
+	{
+		`package test
+		
+		func main() {
+			const c1 = 1 << 128
+		}`,
+		``,
+	},
+	{
+		`package test
+		
+		func main() {
+			const c1 = 1 << 128
+			println(c1)
+		}`,
+		`test/main.go:5:4: bigint overflows target kind`,
+	},
+}
+
 func TestBitShiftingOverflow(t *testing.T) {
 	t.Parallel()
 
@@ -56,104 +153,7 @@ func TestBitShiftingOverflow(t *testing.T) {
 		m.RunMain()
 	}
 
-	type cases struct {
-		source string
-		msg    string
-	}
-
-	tests := []cases{
-		{
-			`package test
-
-func main() {
-	const a = int32(1) << 33
-}`,
-			`test/main.go:3:1: constant overflows`,
-		},
-		{
-			`package test
-
-func main() {
-	const a1 = int8(1) << 8
-}`,
-			`test/main.go:3:1: constant overflows`,
-		},
-		{
-			`package test
-
-func main() {
-	const a2 = int16(1) << 16
-}`,
-			`test/main.go:3:1: constant overflows`,
-		},
-		{
-			`package test
-
-func main() {
-	const a3 = int32(1) << 33
-}`,
-			`test/main.go:3:1: constant overflows`,
-		},
-		{
-			`package test
-
-func main() {
-	const a4 = int64(1) << 65
-}`,
-			`test/main.go:3:1: constant overflows`,
-		},
-		{
-			`package test
-
-func main() {
-	const b1 = uint8(1) << 8
-}`,
-			`test/main.go:3:1: constant overflows`,
-		},
-		{
-			`package test
-
-func main() {
-    const b2 = uint16(1) << 16
-}`,
-			`test/main.go:3:1: constant overflows`,
-		},
-		{
-			`package test
-
-func main() {
-	const b3 = uint32(1) << 33
-}`,
-			`test/main.go:3:1: constant overflows`,
-		},
-		{
-			`package test
-
-func main() {
-    const b4 = uint64(1) << 65
-}`,
-			`test/main.go:3:1: constant overflows`,
-		},
-		{
-			`package test
-		
-		func main() {
-			const c1 = 1 << 128
-		}`,
-			``,
-		},
-		{
-			`package test
-		
-		func main() {
-			const c1 = 1 << 128
-			println(c1)
-		}`,
-			`test/main.go:5:4: bigint overflows target kind`,
-		},
-	}
-
-	for _, tc := range tests {
+	for _, tc := range bitShiftingTests {
 		testFunc(tc.source, tc.msg)
 	}
 }

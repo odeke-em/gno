@@ -50,6 +50,193 @@ func (mpg mockPackageGetterCounts) GetMemPackage(path string) *gnovm.MemPackage 
 	return mpg.mockPackageGetter.GetMemPackage(path)
 }
 
+type memPkgCheckTest struct {
+	name   string
+	pkg    *gnovm.MemPackage
+	getter MemPackageGetter
+	check  func(*testing.T, error)
+}
+
+var memPkgTypeCheckTests = []memPkgCheckTest{
+	{
+		"Simple",
+		&gnovm.MemPackage{
+			Name: "hello",
+			Path: "gno.land/p/demo/hello",
+			Files: []*gnovm.MemFile{
+				{
+					Name: "hello.gno",
+					Body: `
+							package hello
+							type S struct{}
+							func A() S { return S{} }
+							func B() S { return A() }`,
+				},
+			},
+		},
+		nil,
+		nil,
+	},
+	{
+		"WrongReturn",
+		&gnovm.MemPackage{
+			Name: "hello",
+			Path: "gno.land/p/demo/hello",
+			Files: []*gnovm.MemFile{
+				{
+					Name: "hello.gno",
+					Body: `
+							package hello
+							type S struct{}
+							func A() S { return S{} }
+							func B() S { return 11 }`,
+				},
+			},
+		},
+		nil,
+		errContains("cannot use 11"),
+	},
+	{
+		"ParseError",
+		&gnovm.MemPackage{
+			Name: "hello",
+			Path: "gno.land/p/demo/hello",
+			Files: []*gnovm.MemFile{
+				{
+					Name: "hello.gno",
+					Body: `
+							package hello!
+							func B() int { return 11 }`,
+				},
+			},
+		},
+		nil,
+		errContains("found '!'"),
+	},
+	{
+		"MultiError",
+		&gnovm.MemPackage{
+			Name: "main",
+			Path: "gno.land/p/demo/main",
+			Files: []*gnovm.MemFile{
+				{
+					Name: "hello.gno",
+					Body: `
+							package main
+							func main() {
+								_, _ = 11
+								return 88, 88
+							}`,
+				},
+			},
+		},
+		nil,
+		errContains("assignment mismatch", "too many return values"),
+	},
+	{
+		"TestsIgnored",
+		&gnovm.MemPackage{
+			Name: "hello",
+			Path: "gno.land/p/demo/hello",
+			Files: []*gnovm.MemFile{
+				{
+					Name: "hello.gno",
+					Body: `
+							package hello
+							func B() int { return 11 }`,
+				},
+				{
+					Name: "hello_test.gno",
+					Body: `This is not valid Gno code, but it doesn't matter because test
+				files are not checked.`,
+				},
+			},
+		},
+		nil,
+		nil,
+	},
+	{
+		"ImportFailed",
+		&gnovm.MemPackage{
+			Name: "hello",
+			Path: "gno.land/p/demo/hello",
+			Files: []*gnovm.MemFile{
+				{
+					Name: "hello.gno",
+					Body: `
+							package hello
+							import "std"
+							func Hello() std.Address { return "hello" }`,
+				},
+			},
+		},
+		mockPackageGetter{},
+		errContains("import not found: std"),
+	},
+	{
+		"ImportSucceeded",
+		&gnovm.MemPackage{
+			Name: "hello",
+			Path: "gno.land/p/demo/hello",
+			Files: []*gnovm.MemFile{
+				{
+					Name: "hello.gno",
+					Body: `
+							package hello
+							import "std"
+							func Hello() std.Address { return "hello" }`,
+				},
+			},
+		},
+		mockPackageGetter{
+			&gnovm.MemPackage{
+				Name: "std",
+				Path: "std",
+				Files: []*gnovm.MemFile{
+					{
+						Name: "gnovm.gno",
+						Body: `
+								package std
+								type Address string`,
+					},
+				},
+			},
+		},
+		nil,
+	},
+	{
+		"ImportBadIdent",
+		&gnovm.MemPackage{
+			Name: "hello",
+			Path: "gno.land/p/demo/hello",
+			Files: []*gnovm.MemFile{
+				{
+					Name: "hello.gno",
+					Body: `
+							package hello
+							import "std"
+							func Hello() std.Address { return "hello" }`,
+				},
+			},
+		},
+		mockPackageGetter{
+			&gnovm.MemPackage{
+				Name: "a_completely_different_identifier",
+				Path: "std",
+				Files: []*gnovm.MemFile{
+					{
+						Name: "gnovm.gno",
+						Body: `
+								package a_completely_different_identifier
+								type Address string`,
+					},
+				},
+			},
+		},
+		errContains("undefined: std", "a_completely_different_identifier and not used"),
+	},
+}
+
 func TestTypeCheckMemPackage(t *testing.T) {
 	t.Parallel()
 
@@ -73,192 +260,6 @@ func TestTypeCheckMemPackage(t *testing.T) {
 				assert.ErrorContains(t, err, ss[idx])
 			}
 		}
-	}
-
-	type testCase struct {
-		name   string
-		pkg    *gnovm.MemPackage
-		getter MemPackageGetter
-		check  func(*testing.T, error)
-	}
-	tt := []testCase{
-		{
-			"Simple",
-			&gnovm.MemPackage{
-				Name: "hello",
-				Path: "gno.land/p/demo/hello",
-				Files: []*gnovm.MemFile{
-					{
-						Name: "hello.gno",
-						Body: `
-							package hello
-							type S struct{}
-							func A() S { return S{} }
-							func B() S { return A() }`,
-					},
-				},
-			},
-			nil,
-			nil,
-		},
-		{
-			"WrongReturn",
-			&gnovm.MemPackage{
-				Name: "hello",
-				Path: "gno.land/p/demo/hello",
-				Files: []*gnovm.MemFile{
-					{
-						Name: "hello.gno",
-						Body: `
-							package hello
-							type S struct{}
-							func A() S { return S{} }
-							func B() S { return 11 }`,
-					},
-				},
-			},
-			nil,
-			errContains("cannot use 11"),
-		},
-		{
-			"ParseError",
-			&gnovm.MemPackage{
-				Name: "hello",
-				Path: "gno.land/p/demo/hello",
-				Files: []*gnovm.MemFile{
-					{
-						Name: "hello.gno",
-						Body: `
-							package hello!
-							func B() int { return 11 }`,
-					},
-				},
-			},
-			nil,
-			errContains("found '!'"),
-		},
-		{
-			"MultiError",
-			&gnovm.MemPackage{
-				Name: "main",
-				Path: "gno.land/p/demo/main",
-				Files: []*gnovm.MemFile{
-					{
-						Name: "hello.gno",
-						Body: `
-							package main
-							func main() {
-								_, _ = 11
-								return 88, 88
-							}`,
-					},
-				},
-			},
-			nil,
-			errContains("assignment mismatch", "too many return values"),
-		},
-		{
-			"TestsIgnored",
-			&gnovm.MemPackage{
-				Name: "hello",
-				Path: "gno.land/p/demo/hello",
-				Files: []*gnovm.MemFile{
-					{
-						Name: "hello.gno",
-						Body: `
-							package hello
-							func B() int { return 11 }`,
-					},
-					{
-						Name: "hello_test.gno",
-						Body: `This is not valid Gno code, but it doesn't matter because test
-				files are not checked.`,
-					},
-				},
-			},
-			nil,
-			nil,
-		},
-		{
-			"ImportFailed",
-			&gnovm.MemPackage{
-				Name: "hello",
-				Path: "gno.land/p/demo/hello",
-				Files: []*gnovm.MemFile{
-					{
-						Name: "hello.gno",
-						Body: `
-							package hello
-							import "std"
-							func Hello() std.Address { return "hello" }`,
-					},
-				},
-			},
-			mockPackageGetter{},
-			errContains("import not found: std"),
-		},
-		{
-			"ImportSucceeded",
-			&gnovm.MemPackage{
-				Name: "hello",
-				Path: "gno.land/p/demo/hello",
-				Files: []*gnovm.MemFile{
-					{
-						Name: "hello.gno",
-						Body: `
-							package hello
-							import "std"
-							func Hello() std.Address { return "hello" }`,
-					},
-				},
-			},
-			mockPackageGetter{
-				&gnovm.MemPackage{
-					Name: "std",
-					Path: "std",
-					Files: []*gnovm.MemFile{
-						{
-							Name: "gnovm.gno",
-							Body: `
-								package std
-								type Address string`,
-						},
-					},
-				},
-			},
-			nil,
-		},
-		{
-			"ImportBadIdent",
-			&gnovm.MemPackage{
-				Name: "hello",
-				Path: "gno.land/p/demo/hello",
-				Files: []*gnovm.MemFile{
-					{
-						Name: "hello.gno",
-						Body: `
-							package hello
-							import "std"
-							func Hello() std.Address { return "hello" }`,
-					},
-				},
-			},
-			mockPackageGetter{
-				&gnovm.MemPackage{
-					Name: "a_completely_different_identifier",
-					Path: "std",
-					Files: []*gnovm.MemFile{
-						{
-							Name: "gnovm.gno",
-							Body: `
-								package a_completely_different_identifier
-								type Address string`,
-						},
-					},
-				},
-			},
-			errContains("undefined: std", "a_completely_different_identifier and not used"),
-		},
 	}
 
 	cacheMpg := mockPackageGetterCounts{
@@ -319,7 +320,7 @@ func TestTypeCheckMemPackage(t *testing.T) {
 		},
 	})
 
-	for _, tc := range tt {
+	for _, tc := range memPkgTypeCheckTests {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()

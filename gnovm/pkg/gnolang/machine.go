@@ -3,6 +3,7 @@ package gnolang
 // XXX rename file to machine.go.
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"reflect"
@@ -10,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/gnolang/gno/gnovm"
 	bm "github.com/gnolang/gno/gnovm/pkg/benchops"
@@ -79,6 +81,8 @@ type Machine struct {
 	// it is executed. It is reset to zero after the defer functions in the current
 	// scope have finished executing.
 	DeferPanicScope uint
+
+	ctx context.Context
 }
 
 // NewMachine initializes a new gno virtual machine, acting as a shorthand
@@ -678,6 +682,10 @@ func (m *Machine) RunFunc(fn Name) {
 	m.RunStatement(S(Call(Nx(fn))))
 }
 
+func (m *Machine) SetContext(ctx context.Context) {
+	m.ctx = ctx
+}
+
 func (m *Machine) RunMain() {
 	defer func() {
 		r := recover()
@@ -1144,6 +1152,11 @@ const (
 // main run loop.
 
 func (m *Machine) Run() {
+	if m.ctx == nil {
+		ctx, _ := context.WithTimeout(context.Background(), 30*time.Second)
+		m.ctx = ctx
+	}
+
 	if bm.OpsEnabled {
 		defer func() {
 			// output each machine run results to file
@@ -1168,6 +1181,11 @@ func (m *Machine) Run() {
 		if m.Debugger.enabled {
 			m.Debug()
 		}
+		if err := m.ctx.Err(); err != nil {
+			println("Context exit: ", err.Error())
+			return
+		}
+
 		op := m.PopOp()
 		if bm.OpsEnabled {
 			// benchmark the operation.
